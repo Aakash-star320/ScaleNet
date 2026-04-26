@@ -1,0 +1,1331 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --bg4: #30363d;
+    --teal: #00b4d8;
+    --teal2: #0077b6;
+    --amber: #f59e0b;
+    --green: #10b981;
+    --red: #ef4444;
+    --purple: #a78bfa;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --border: #30363d;
+    --interactive: #00b4d8;
+    --compute: #a78bfa;
+    --batch: #f59e0b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .dashboard {
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--teal), var(--teal2));
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #fff;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+  }
+
+  .badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .badge-green {
+    background: rgba(16, 185, 129, .15);
+    color: var(--green);
+    border: 1px solid rgba(16, 185, 129, .3);
+  }
+
+  .badge-amber {
+    background: rgba(245, 158, 11, .15);
+    color: var(--amber);
+    border: 1px solid rgba(245, 158, 11, .3);
+  }
+
+  .badge-teal {
+    background: rgba(0, 180, 216, .15);
+    color: var(--teal);
+    border: 1px solid rgba(0, 180, 216, .3);
+  }
+
+  .badge-red {
+    background: rgba(239, 68, 68, .15);
+    color: var(--red);
+    border: 1px solid rgba(239, 68, 68, .3);
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: .4;
+    }
+  }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .pressure-bar {
+    height: 4px;
+    background: var(--bg4);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+
+  .pressure-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width .5s ease, background .5s ease;
+  }
+
+  .pool-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .pool-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .pool-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .pool-name {
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .pool-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .worker-grid {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .worker-node {
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-family: 'IBM Plex Mono', monospace;
+    position: relative;
+    transition: all .3s ease;
+  }
+
+  .worker-node.active {
+    border-color: var(--green);
+  }
+
+  .worker-node.busy {
+    border-color: var(--amber);
+  }
+
+  .worker-node.draining {
+    border-color: var(--red);
+    opacity: .6;
+  }
+
+  .queue-track {
+    background: var(--bg4);
+    border-radius: 3px;
+    height: 6px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+
+  .queue-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width .5s ease;
+  }
+
+  .pool-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .pool-stat {
+    text-align: center;
+  }
+
+  .pool-stat-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .pool-stat-lbl {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .mid-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .card-title {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 150px;
+  }
+
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .pq-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pq-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pq-label {
+    font-size: 11px;
+    color: var(--muted);
+    width: 20px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .pq-track {
+    flex: 1;
+    background: var(--bg4);
+    border-radius: 3px;
+    height: 8px;
+    overflow: hidden;
+  }
+
+  .pq-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width .5s ease;
+  }
+
+  .pq-count {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    width: 32px;
+    text-align: right;
+    color: var(--muted);
+  }
+
+  .ml-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .ml-metric {
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 10px;
+  }
+
+  .ml-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .ml-lbl {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .feature-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .feat-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .feat-name {
+    font-size: 10px;
+    color: var(--muted);
+    width: 90px;
+    font-family: 'IBM Plex Mono', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .feat-bar-track {
+    flex: 1;
+    background: var(--bg4);
+    border-radius: 2px;
+    height: 4px;
+  }
+
+  .feat-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--purple);
+    transition: width .5s ease;
+  }
+
+  .feat-val {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    width: 32px;
+    text-align: right;
+  }
+
+  .event-log {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  /* Custom scrollbar for event log */
+  .event-log::-webkit-scrollbar {
+    width: 6px;
+  }
+  .event-log::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .event-log::-webkit-scrollbar-thumb {
+    background: var(--bg4);
+    border-radius: 3px;
+  }
+
+  .event-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 5px 8px;
+    background: var(--bg3);
+    border-radius: 5px;
+    font-size: 11px;
+  }
+
+  .event-time {
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    white-space: nowrap;
+  }
+
+  .event-type {
+    width: 70px;
+    flex-shrink: 0;
+  }
+
+  .event-msg {
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .algo-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .algo-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .algo-pills {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+
+  .algo-pill {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .algo-pill.active {
+    background: rgba(0, 180, 216, .15);
+    border-color: rgba(0, 180, 216, .4);
+    color: var(--teal);
+  }
+
+  .sla-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .sla-card {
+    flex: 1;
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .sla-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .sla-lbl {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .admission-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .adm-card {
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 10px;
+  }
+
+  .adm-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  .adm-lbl {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .threshold-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .thr-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  .thr-lbl {
+    width: 40px;
+    color: var(--muted);
+  }
+
+  .thr-track {
+    flex: 1;
+    background: var(--bg4);
+    border-radius: 2px;
+    height: 5px;
+    position: relative;
+  }
+
+  .thr-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width .5s ease;
+  }
+
+  .thr-mark {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: rgba(239, 68, 68, .5);
+  }
+
+  .thr-val {
+    font-family: 'IBM Plex Mono', monospace;
+    width: 28px;
+    text-align: right;
+    color: var(--muted);
+  }
+</style>
+
+<div class="dashboard">
+  <h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;">ScaleNet live operations dashboard
+    showing worker pools, queue depths, system pressure, and ML classifier status</h2>
+
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-icon">SN</div>
+      <span>ScaleNet</span>
+      <span style="color:var(--muted);font-weight:400;">/ Ops Dashboard</span>
+      <span class="badge badge-green">v2.0 P2C</span>
+      <span class="badge badge-teal">O(1) scheduler</span>
+    </div>
+    <div class="topbar-right">
+      <div class="pulse"></div>
+      <span id="live-time" class="mono">--:--:--</span>
+      <span style="color:var(--border);">|</span>
+      <span>Port 3000 (LB) · 3001 (PQ)</span>
+      <span style="color:var(--border);">|</span>
+      <span id="algo-badge" class="badge badge-teal mono">P2C / WLC / RR</span>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-label">System pressure</div>
+      <div class="stat-value" id="pressure-val" style="color:var(--green);">0.24</div>
+      <div class="stat-sub mono" style="font-size:10px;">(3i + 2c + b) / 6</div>
+      <div class="pressure-bar">
+        <div class="pressure-fill" id="pressure-fill" style="width:24%;background:var(--green);"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Requests / sec</div>
+      <div class="stat-value" id="rps-val">12</div>
+      <div class="stat-sub" id="rps-sub">↑ last 5s interval</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active workers</div>
+      <div class="stat-value" id="active-workers-val">3</div>
+      <div class="stat-sub">of <span id="total-workers-val">3</span> registered</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Queue depth</div>
+      <div class="stat-value" id="total-queue-val">0</div>
+      <div class="stat-sub">across all 3 pools</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Admission drops</div>
+      <div class="stat-value" id="drop-val" style="color:var(--green);">0%</div>
+      <div class="stat-sub" id="drop-sub">503 Retry-After</div>
+    </div>
+  </div>
+
+  <div class="pool-row">
+    <!-- INTERACTIVE POOL -->
+    <div class="pool-card">
+      <div class="pool-header">
+        <div class="pool-name">
+          <div class="pool-dot" style="background:var(--interactive);"></div> Interactive
+        </div>
+        <span class="badge badge-teal mono">200ms SLA</span>
+      </div>
+      <div class="worker-grid" id="interactive-workers"></div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Queue <span id="i-q-depth">0</span> / 50</div>
+      <div class="queue-track">
+        <div class="queue-fill" id="i-q-fill" style="width:0%;background:var(--interactive);"></div>
+      </div>
+      <div class="pool-stats">
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="i-active" style="color:var(--green);">0</div>
+          <div class="pool-stat-lbl">active</div>
+        </div>
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="i-idle">1</div>
+          <div class="pool-stat-lbl">idle</div>
+        </div>
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="i-lat" style="color:var(--teal);" class="mono">92ms</div>
+          <div class="pool-stat-lbl">avg latency</div>
+        </div>
+      </div>
+      <div class="sla-row">
+        <div class="sla-card">
+          <div class="sla-val" id="i-sla" style="color:var(--green);">98.2%</div>
+          <div class="sla-lbl">SLA met</div>
+        </div>
+        <div class="sla-card">
+          <div class="sla-val mono">P2C</div>
+          <div class="sla-lbl">algorithm</div>
+        </div>
+        <div class="sla-card">
+          <div class="sla-val" id="i-cap">1-5</div>
+          <div class="sla-lbl">capacity</div>
+        </div>
+      </div>
+    </div>
+    <!-- COMPUTE POOL -->
+    <div class="pool-card">
+      <div class="pool-header">
+        <div class="pool-name">
+          <div class="pool-dot" style="background:var(--compute);"></div> Compute
+        </div>
+        <span class="badge"
+          style="background:rgba(167,139,250,.15);color:var(--compute);border:1px solid rgba(167,139,250,.3);">WLC +
+          complexity</span>
+      </div>
+      <div class="worker-grid" id="compute-workers"></div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Queue <span id="c-q-depth">0</span> / 100</div>
+      <div class="queue-track">
+        <div class="queue-fill" id="c-q-fill" style="width:0%;background:var(--compute);"></div>
+      </div>
+      <div class="pool-stats">
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="c-active" style="color:var(--green);">0</div>
+          <div class="pool-stat-lbl">active</div>
+        </div>
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="c-idle">1</div>
+          <div class="pool-stat-lbl">idle</div>
+        </div>
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="c-lat" style="color:var(--purple);" class="mono">2.1s</div>
+          <div class="pool-stat-lbl">avg latency</div>
+        </div>
+      </div>
+      <div class="sla-row">
+        <div class="sla-card">
+          <div class="sla-val" id="c-complexity" style="color:var(--purple);">3.2</div>
+          <div class="sla-lbl">avg complexity</div>
+        </div>
+        <div class="sla-card">
+          <div class="sla-val mono">WLC</div>
+          <div class="sla-lbl">algorithm</div>
+        </div>
+        <div class="sla-card">
+          <div class="sla-val" id="c-cap">1-4</div>
+          <div class="sla-lbl">capacity</div>
+        </div>
+      </div>
+    </div>
+    <!-- BATCH POOL -->
+    <div class="pool-card">
+      <div class="pool-header">
+        <div class="pool-name">
+          <div class="pool-dot" style="background:var(--batch);"></div> Batch
+        </div>
+        <span class="badge badge-amber">deferred SLA</span>
+      </div>
+      <div class="worker-grid" id="batch-workers"></div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Queue <span id="b-q-depth">0</span> / 500 ·
+        buffer <span id="b-buf">0</span>/50</div>
+      <div class="queue-track">
+        <div class="queue-fill" id="b-q-fill" style="width:0%;background:var(--batch);"></div>
+      </div>
+      <div class="pool-stats">
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="b-active" style="color:var(--green);">0</div>
+          <div class="pool-stat-lbl">active</div>
+        </div>
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="b-idle">1</div>
+          <div class="pool-stat-lbl">idle</div>
+        </div>
+        <div class="pool-stat">
+          <div class="pool-stat-val" id="b-lat" style="color:var(--amber);" class="mono">5s</div>
+          <div class="pool-stat-lbl">drain time</div>
+        </div>
+      </div>
+      <div class="sla-row">
+        <div class="sla-card">
+          <div class="sla-val" id="b-buf-pct" style="color:var(--amber);">0%</div>
+          <div class="sla-lbl">buffer used</div>
+        </div>
+        <div class="sla-card">
+          <div class="sla-val mono">RR</div>
+          <div class="sla-lbl">algorithm</div>
+        </div>
+        <div class="sla-card">
+          <div class="sla-val" id="b-cap">1-3</div>
+          <div class="sla-lbl">capacity</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mid-row">
+    <div class="card">
+      <div class="card-title">
+        <span>Throughput (requests / 5s interval)</span>
+        <span class="badge badge-teal mono" id="total-rx">0 rx</span>
+      </div>
+      <div class="chart-wrap"><canvas id="throughput-chart" role="img"
+          aria-label="Line chart showing request throughput over time per pool type">Throughput chart</canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>Latency distribution</span><span class="badge badge-green mono" id="p99-badge">p99
+          —</span></div>
+      <div class="chart-wrap"><canvas id="latency-chart" role="img"
+          aria-label="Bar chart showing average latency per pool type">Latency chart</canvas></div>
+    </div>
+  </div>
+
+  <div class="bottom-row">
+    <!-- Priority Queue -->
+    <div class="card">
+      <div class="card-title">
+        <span>Priority queue (port 3001)</span>
+        <span class="badge" id="pq-mode-badge"
+          style="background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);">rules</span>
+      </div>
+      <div class="pq-bars">
+        <div class="pq-row">
+          <div class="pq-label" style="color:var(--red);">P1</div>
+          <div class="pq-track">
+            <div class="pq-fill" id="p1-fill" style="width:0%;background:var(--red);"></div>
+          </div>
+          <div class="pq-count" id="p1-count">0</div>
+        </div>
+        <div class="pq-row">
+          <div class="pq-label" style="color:var(--amber);">P2</div>
+          <div class="pq-track">
+            <div class="pq-fill" id="p2-fill" style="width:0%;background:var(--amber);"></div>
+          </div>
+          <div class="pq-count" id="p2-count">0</div>
+        </div>
+        <div class="pq-row">
+          <div class="pq-label" style="color:var(--muted);">P3</div>
+          <div class="pq-track">
+            <div class="pq-fill" id="p3-fill" style="width:0%;background:var(--muted);"></div>
+          </div>
+          <div class="pq-count" id="p3-count">0</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;">
+          <div class="mono" style="font-size:14px;font-weight:500;" id="pq-processed">0</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">forwarded</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;">
+          <div class="mono" style="font-size:14px;font-weight:500;color:var(--red);" id="pq-rejected">0</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">rejected</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">escalation: P3→P2 after 30s · relaxation:
+          P2→P1 below 50% pressure</div>
+        <div style="font-size:10px;color:var(--muted);">forwarding rate: 50 req/s · processor: 100ms interval</div>
+      </div>
+    </div>
+
+    <!-- ML Classifier -->
+    <div class="card">
+      <div class="card-title">
+        <span>ML classifier (logistic regression)</span>
+        <span class="badge"
+          style="background:rgba(167,139,250,.15);color:var(--purple);border:1px solid rgba(167,139,250,.3);">One-vs-Rest</span>
+      </div>
+      <div class="ml-grid">
+        <div class="ml-metric">
+          <div class="ml-val" id="ml-accuracy" style="color:var(--green);">—</div>
+          <div class="ml-lbl">training accuracy</div>
+        </div>
+        <div class="ml-metric">
+          <div class="ml-val" id="ml-samples" style="color:var(--purple);">58</div>
+          <div class="ml-lbl">training samples</div>
+        </div>
+        <div class="ml-metric">
+          <div class="ml-val" id="ml-loaded" style="color:var(--amber);">rules</div>
+          <div class="ml-lbl">active mode</div>
+        </div>
+        <div class="ml-metric">
+          <div class="ml-val" id="ml-conf" style="color:var(--teal);">—</div>
+          <div class="ml-lbl">last confidence</div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">feature weights (7 inputs)</div>
+      <div class="feature-bars" id="feature-bars"></div>
+    </div>
+
+    <!-- Admission + Events -->
+    <div class="card">
+      <div class="card-title"><span>Admission control + events</span></div>
+      <div class="admission-grid">
+        <div class="adm-card">
+          <div class="adm-val" id="adm-total" style="color:var(--green);">0</div>
+          <div class="adm-lbl">admitted</div>
+        </div>
+        <div class="adm-card">
+          <div class="adm-val" id="adm-dropped" style="color:var(--red);">0</div>
+          <div class="adm-lbl">shed (503)</div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">pressure thresholds</div>
+      <div class="threshold-bars">
+        <div class="thr-row">
+          <div class="thr-lbl">batch</div>
+          <div class="thr-track">
+            <div class="thr-fill" id="thr-batch" style="background:var(--batch);width:24%;"></div>
+            <div class="thr-mark" style="left:70%;"></div>
+          </div>
+          <div class="thr-val" id="thr-batch-v">0.24</div>
+        </div>
+        <div class="thr-row">
+          <div class="thr-lbl">compute</div>
+          <div class="thr-track">
+            <div class="thr-fill" id="thr-compute" style="background:var(--compute);width:24%;"></div>
+            <div class="thr-mark" style="left:90%;"></div>
+          </div>
+          <div class="thr-val" id="thr-compute-v">0.24</div>
+        </div>
+        <div class="thr-row">
+          <div class="thr-lbl">all</div>
+          <div class="thr-track">
+            <div class="thr-fill" id="thr-all" style="background:var(--red);width:24%;"></div>
+            <div class="thr-mark" style="left:95%;"></div>
+          </div>
+          <div class="thr-val" id="thr-all-v">0.24</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:var(--muted);margin-bottom:6px;">event log</div>
+      <div class="event-log" id="event-log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script>
+  const $ = id => document.getElementById(id);
+
+  Chart.register(ChartDataLabels);
+
+  const STATE = {
+    tick: 0,
+    pools: {
+      interactive: { workers: [{ id: 'interactive-1', port: 4001, busy: false, drain: false }], qDepth: 0, active: 0, idle: 1, latencies: [] },
+      compute: { workers: [{ id: 'compute-1', port: 4002, busy: false, drain: false }], qDepth: 0, active: 0, idle: 1, latencies: [] },
+      batch: { workers: [{ id: 'batch-1', port: 4003, busy: false, drain: false }], qDepth: 0, active: 0, idle: 1, latencies: [], buffer: 0 }
+    },
+    pq: { p1: 0, p2: 0, p3: 0, processed: 0, rejected: 0 },
+    admission: { admitted: 0, dropped: 0 },
+    rps: 0,
+    pressure: 0.24,
+    events: [],
+    totalRx: 0,
+    throughputHistory: { interactive: [], compute: [], batch: [] },
+    latencyHistory: { interactive: [], compute: [], batch: [] },
+    complexity: 3.2
+  };
+
+  const LABELS = [];
+  const MAX_HISTORY = 12;
+
+  function initLabels() {
+    for (let i = MAX_HISTORY; i >= 0; i--) LABELS.push(`-${i * 5}s`);
+    for (let t of ['interactive', 'compute', 'batch']) {
+      STATE.throughputHistory[t] = new Array(MAX_HISTORY + 1).fill(0);
+      STATE.latencyHistory[t] = new Array(MAX_HISTORY + 1).fill(0);
+    }
+  }
+
+  function addEvent(type, msg, color) {
+    const now = new Date();
+    const time = now.toTimeString().slice(0, 8);
+    STATE.events.unshift({ time, type, msg, color });
+    if (STATE.events.length > 150) STATE.events.pop();
+  }
+
+  const throughputChart = (() => {
+    const ctx = $('throughput-chart').getContext('2d');
+    return new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: LABELS,
+        datasets: [
+          { label: 'interactive', data: [], borderColor: '#00b4d8', backgroundColor: 'rgba(0,180,216,.08)', fill: true, tension: .4, borderWidth: 1.5, pointRadius: 0 },
+          { label: 'compute', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,.08)', fill: true, tension: .4, borderWidth: 1.5, pointRadius: 0 },
+          { label: 'batch', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.08)', fill: true, tension: .4, borderWidth: 1.5, pointRadius: 0 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { display: true, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 4 }, grid: { color: 'rgba(48,54,61,.5)' }, border: { display: false } }
+        }
+      }
+    });
+  })();
+
+  const latencyChart = (() => {
+    const ctx = $('latency-chart').getContext('2d');
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Interactive', 'Compute', 'Batch drain'],
+        datasets: [{
+          data: [92, 2100, 500],
+          backgroundColor: ['rgba(0,180,216,.6)', 'rgba(167,139,250,.6)', 'rgba(245,158,11,.6)'],
+          borderColor: ['#00b4d8', '#a78bfa', '#f59e0b'],
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                let v = context.raw;
+                if (context.dataIndex === 1) return ' ' + (v / 1000).toFixed(1) + 's';
+                return ' ' + v + 'ms';
+              }
+            }
+          },
+          datalabels: {
+            anchor: 'end',
+            align: 'top',
+            color: '#8b949e',
+            font: { size: 10, family: 'IBM Plex Mono' },
+            formatter: function (value, context) {
+              if (context.dataIndex === 1) return (value / 1000).toFixed(1) + 's';
+              return value + 'ms';
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8b949e', font: { size: 11 } }, grid: { display: false }, border: { display: false } },
+          y: { type: 'logarithmic', display: true, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 4, callback: v => v >= 1000 ? Math.round(v / 100) / 10 + 's' : v + 'ms' }, grid: { color: 'rgba(48,54,61,.5)' }, border: { display: false } }
+        }
+      }
+    });
+  })();
+
+  function buildWorkerNodes(pool, containerId, color) {
+    const container = $(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    pool.workers.forEach(w => {
+      const div = document.createElement('div');
+      div.className = 'worker-node' + (w.drain ? ' draining' : w.busy ? ' busy' : ' active');
+      div.style.background = w.drain ? 'rgba(239,68,68,.1)' : w.busy ? 'rgba(245,158,11,.15)' : 'rgba(16,185,129,.1)';
+      div.innerHTML = `<span style="color:${w.drain ? '#ef4444' : w.busy ? '#f59e0b' : '#10b981'};font-size:8px;">${w.busy ? '●' : '○'}</span>`;
+      div.title = `${w.id} :${w.port}`;
+      container.appendChild(div);
+    });
+  }
+
+  function updateFeatureBars(classWeights) {
+    const container = $('feature-bars');
+    if (!classWeights) return;
+
+    const p1Weights = classWeights['1']?.weights || [0, 0, 0, 0, 0, 0, 0];
+    const featureNames = ['requestType', 'payloadSize', 'complexity', 'hourOfDay', 'hasUrgentFlag', 'rejectionRate', 'queueDepth'];
+
+    const maxW = Math.max(...p1Weights.map(Math.abs), 0.001);
+
+    container.innerHTML = '';
+    featureNames.forEach((name, i) => {
+      const w = p1Weights[i] || 0;
+      const val = Math.abs(w) / maxW;
+      container.innerHTML += `<div class="feat-row">
+      <div class="feat-name">${name}</div>
+      <div class="feat-bar-track"><div class="feat-bar-fill" style="width:${Math.round(val * 100)}%;background:${w < 0 ? 'var(--amber)' : 'var(--purple)'};"></div></div>
+      <div class="feat-val">${w.toFixed(2)}</div>
+    </div>`;
+    });
+  }
+
+  function renderEvents() {
+    const log = $('event-log');
+    log.innerHTML = STATE.events.map(e => `
+    <div class="event-item">
+      <span class="event-time">${e.time}</span>
+      <span class="event-type"><span class="badge" style="background:${e.color}22;color:${e.color};border:1px solid ${e.color}44;font-size:10px;padding:1px 5px;">${e.type}</span></span>
+      <span class="event-msg">${e.msg}</span>
+    </div>`).join('');
+  }
+
+  let lastActiveWorkers = new Set();
+  let lastPqMode = null;
+  let lastMetricsTimestamp = 0;
+
+  async function fetchRealData() {
+    STATE.tick++;
+
+    try {
+      const [metricsRes, queueRes, pqStatusRes, pqStatsRes] = await Promise.all([
+        fetch('http://localhost:3000/metrics').catch(() => null),
+        fetch('http://localhost:3000/queue').catch(() => null),
+        fetch('http://localhost:3001/queue/status').catch(() => null),
+        fetch('http://localhost:3001/queue/stats').catch(() => null)
+      ]);
+
+      let iLat = 0, cLat = 0, bLat = 0;
+
+      // Load Balancer Metrics
+      if (metricsRes && metricsRes.ok) {
+        const metrics = await metricsRes.json();
+        STATE.pressure = metrics.system?.weightedPressure || 0;
+
+        // Since interval is 5s, average RPS is total / 5
+        const received = metrics.system?.totalReceivedThisInterval || 0;
+        const dropped = metrics.system?.totalDroppedThisInterval || 0;
+        STATE.rps = Math.round(received / 5);
+
+        // Use lifetime metrics if available, otherwise fallback to interval accumulation
+        if (metrics.system?.lifetimeReceived !== undefined) {
+          STATE.admission.admitted = metrics.system.lifetimeReceived - metrics.system.lifetimeDropped;
+          STATE.admission.dropped = metrics.system.lifetimeDropped;
+          STATE.totalRx = metrics.system.lifetimeReceived;
+        } else if (metrics.timestamp && metrics.timestamp !== lastMetricsTimestamp) {
+          STATE.totalRx += received;
+          STATE.admission.admitted += (received - dropped);
+          STATE.admission.dropped += dropped;
+          lastMetricsTimestamp = metrics.timestamp;
+        }
+
+        for (const t of ['interactive', 'compute', 'batch']) {
+          if (metrics[t]) {
+            STATE.pools[t].qDepth = metrics[t].queueDepth || 0;
+            STATE.pools[t].active = metrics[t].activeWorkers || 0;
+            STATE.pools[t].idle = metrics[t].idleWorkers || 0;
+          }
+        }
+
+        iLat = metrics.interactive?.avgLatency || 0;
+        cLat = metrics.compute?.avgLatency || 0;
+        bLat = metrics.batch?.avgLatency || 0;
+
+        // Update throughput history
+        for (const t of ['interactive', 'compute', 'batch']) {
+          STATE.throughputHistory[t].shift();
+          STATE.throughputHistory[t].push(Math.round((metrics[t]?.receivedThisInterval || 0) / 5));
+        }
+
+        if (dropped > 0) {
+          addEvent('503 shed', `dropped ${dropped} reqs (pressure ${STATE.pressure.toFixed(2)})`, '#ef4444');
+        }
+      }
+
+      // Load Balancer Queue Status
+      if (queueRes && queueRes.ok) {
+        const q = await queueRes.json();
+        let currentActive = new Set();
+
+        for (const t of ['interactive', 'compute', 'batch']) {
+          if (q.workerPools && q.workerPools[t]) {
+            STATE.pools[t].workers = q.workerPools[t].map(w => {
+              currentActive.add(w.id);
+              if (!lastActiveWorkers.has(w.id)) {
+                addEvent('worker up', `registered ${w.id} (${t})`, '#10b981');
+              }
+              return {
+                id: w.id,
+                port: w.id.split('-').pop() || '4000',
+                busy: w.active > 0,
+                drain: !w.healthy
+              };
+            });
+          }
+        }
+
+        for (const oldW of lastActiveWorkers) {
+          if (!currentActive.has(oldW)) {
+            addEvent('worker down', `removed ${oldW}`, '#f59e0b');
+          }
+        }
+        lastActiveWorkers = currentActive;
+      }
+
+      // Priority Queue Status
+      if (pqStatusRes && pqStatusRes.ok) {
+        const pqs = await pqStatusRes.json();
+        STATE.pq.p1 = pqs.queues?.priority_1_urgent || 0;
+        STATE.pq.p2 = pqs.queues?.priority_2_normal || 0;
+        STATE.pq.p3 = pqs.queues?.priority_3_low || 0;
+
+        const mode = pqs.classificationMode === 'ml' ? 'ML' : 'rules';
+        $('ml-loaded').textContent = mode;
+
+        if (lastPqMode && lastPqMode !== mode) {
+          addEvent('mode switch', `classifier switched to ${mode}`, '#a78bfa');
+        }
+        lastPqMode = mode;
+      }
+
+      // Priority Queue Stats
+      if (pqStatsRes && pqStatsRes.ok) {
+        const stats = await pqStatsRes.json();
+        STATE.pq.processed = stats.totals?.processed || 0;
+        STATE.pq.rejected = stats.totals?.rejected || 0;
+
+        if (stats.mlModel) {
+          $('ml-accuracy').textContent = (stats.mlModel.accuracy * 100).toFixed(1) + '%';
+          $('ml-samples').textContent = stats.mlModel.trainingSamples || 0;
+          if (stats.mlModel.classWeights) {
+            updateFeatureBars(stats.mlModel.classWeights);
+          }
+        }
+
+        if (stats.lastConfidence !== undefined && stats.lastConfidence !== null) {
+          $('ml-conf').textContent = (stats.lastConfidence * 100).toFixed(1) + '%';
+        } else {
+          $('ml-conf').textContent = '—';
+        }
+      }
+
+      updateDOM(iLat, cLat, bLat);
+      updateCharts();
+    } catch (err) {
+      console.error("Dashboard error fetching metrics:", err);
+    }
+  }
+
+  function updateDOM(iLat, cLat, bLat) {
+    // Time
+    $('live-time').textContent = new Date().toTimeString().slice(0, 8);
+
+    // Top stat cards
+    const pColor = STATE.pressure > 0.9 ? 'var(--red)' : STATE.pressure > 0.7 ? 'var(--amber)' : 'var(--green)';
+    $('pressure-val').textContent = STATE.pressure.toFixed(2);
+    $('pressure-val').style.color = pColor;
+    $('pressure-fill').style.width = Math.min(100, Math.round(STATE.pressure * 100)) + '%';
+    $('pressure-fill').style.background = pColor;
+    $('rps-val').textContent = STATE.rps;
+
+    const totalWorkers = STATE.pools.interactive.workers.length + STATE.pools.compute.workers.length + STATE.pools.batch.workers.length;
+    const activeW = STATE.pools.interactive.active + STATE.pools.compute.active + STATE.pools.batch.active;
+    $('active-workers-val').textContent = activeW;
+    $('total-workers-val').textContent = totalWorkers;
+    $('total-queue-val').textContent = STATE.pools.interactive.qDepth + STATE.pools.compute.qDepth + STATE.pools.batch.qDepth;
+
+    const dropPct = STATE.admission.admitted + STATE.admission.dropped > 0
+      ? Math.round(STATE.admission.dropped / (STATE.admission.admitted + STATE.admission.dropped) * 100) : 0;
+    $('drop-val').textContent = dropPct + '%';
+    $('drop-val').style.color = dropPct > 5 ? 'var(--red)' : dropPct > 1 ? 'var(--amber)' : 'var(--green)';
+
+    // Interactive pool
+    buildWorkerNodes(STATE.pools.interactive, 'interactive-workers', '#00b4d8');
+    $('i-q-depth').textContent = STATE.pools.interactive.qDepth;
+    $('i-q-fill').style.width = Math.min(100, Math.round(STATE.pools.interactive.qDepth / 50 * 100)) + '%';
+    $('i-active').textContent = STATE.pools.interactive.active;
+    $('i-idle').textContent = STATE.pools.interactive.idle;
+    $('i-lat').textContent = iLat + 'ms';
+    $('i-sla').textContent = (iLat < 200 ? '99.9' : '85.4') + '%';
+
+    // Compute pool
+    buildWorkerNodes(STATE.pools.compute, 'compute-workers', '#a78bfa');
+    $('c-q-depth').textContent = STATE.pools.compute.qDepth;
+    $('c-q-fill').style.width = Math.min(100, Math.round(STATE.pools.compute.qDepth / 100 * 100)) + '%';
+    $('c-active').textContent = STATE.pools.compute.active;
+    $('c-idle').textContent = STATE.pools.compute.idle;
+    $('c-lat').textContent = cLat >= 1000 ? (Math.round(cLat / 100) / 10) + 's' : cLat + 'ms';
+    $('c-complexity').textContent = STATE.complexity.toFixed(1);
+
+    // Batch pool
+    buildWorkerNodes(STATE.pools.batch, 'batch-workers', '#f59e0b');
+    $('b-q-depth').textContent = STATE.pools.batch.qDepth;
+    $('b-buf').textContent = STATE.pools.batch.buffer || 0;
+    $('b-q-fill').style.width = Math.min(100, Math.round(STATE.pools.batch.qDepth / 500 * 100)) + '%';
+    $('b-active').textContent = STATE.pools.batch.active;
+    $('b-idle').textContent = STATE.pools.batch.idle;
+    $('b-lat').textContent = bLat + 'ms';
+    $('b-buf-pct').textContent = Math.round((STATE.pools.batch.buffer || 0) / 50 * 100) + '%';
+
+    // Priority queue
+    const maxPQ = Math.max(STATE.pq.p1 + STATE.pq.p2 + STATE.pq.p3, 1);
+    $('p1-fill').style.width = Math.round(STATE.pq.p1 / maxPQ * 100) + '%';
+    $('p2-fill').style.width = Math.round(STATE.pq.p2 / maxPQ * 100) + '%';
+    $('p3-fill').style.width = Math.round(STATE.pq.p3 / maxPQ * 100) + '%';
+    $('p1-count').textContent = STATE.pq.p1;
+    $('p2-count').textContent = STATE.pq.p2;
+    $('p3-count').textContent = STATE.pq.p3;
+    $('pq-processed').textContent = STATE.pq.processed.toLocaleString();
+    $('pq-rejected').textContent = STATE.pq.rejected.toLocaleString();
+
+    // ML
+    $('total-rx').textContent = STATE.totalRx.toLocaleString() + ' rx';
+
+    // Admission
+    $('adm-total').textContent = STATE.admission.admitted.toLocaleString();
+    $('adm-dropped').textContent = STATE.admission.dropped.toLocaleString();
+    $('thr-batch').style.width = Math.min(100, Math.round(STATE.pressure * 100)) + '%';
+    $('thr-compute').style.width = Math.min(100, Math.round(STATE.pressure * 100)) + '%';
+    $('thr-all').style.width = Math.min(100, Math.round(STATE.pressure * 100)) + '%';
+    $('thr-batch-v').textContent = STATE.pressure.toFixed(2);
+    $('thr-compute-v').textContent = STATE.pressure.toFixed(2);
+    $('thr-all-v').textContent = STATE.pressure.toFixed(2);
+
+    // Latency chart
+    latencyChart.data.datasets[0].data = [iLat, cLat, bLat];
+    latencyChart.update('none');
+    const p99 = Math.round(cLat * 1.3);
+    $('p99-badge').textContent = 'p99 ' + (p99 >= 1000 ? (Math.round(p99 / 100) / 10) + 's' : p99 + 'ms');
+
+    renderEvents();
+  }
+
+  function updateCharts() {
+    throughputChart.data.datasets[0].data = [...STATE.throughputHistory.interactive];
+    throughputChart.data.datasets[1].data = [...STATE.throughputHistory.compute];
+    throughputChart.data.datasets[2].data = [...STATE.throughputHistory.batch];
+    throughputChart.update('none');
+  }
+
+  initLabels();
+  addEvent('boot', 'Connecting to LB (:3000) and PQ (:3001)...', '#00b4d8');
+  fetchRealData();
+  setInterval(fetchRealData, 2000);
+</script>

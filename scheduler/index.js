@@ -18,6 +18,11 @@ let intervalMetrics = {
   system: { totalReceivedThisInterval: 0, totalDroppedThisInterval: 0 }
 };
 
+let lifetimeMetrics = {
+  totalReceived: 0,
+  totalDropped: 0
+};
+
 let metricsSnapshot = { timestamp: Date.now() }; // Initialize blank
 
 setInterval(() => {
@@ -59,6 +64,8 @@ setInterval(() => {
      system: {
         totalReceivedThisInterval: intervalMetrics.system.totalReceivedThisInterval,
         totalDroppedThisInterval: intervalMetrics.system.totalDroppedThisInterval,
+        lifetimeReceived: lifetimeMetrics.totalReceived,
+        lifetimeDropped: lifetimeMetrics.totalDropped,
         weightedPressure: parseFloat(weightedPressure.toFixed(2))
      }
   };
@@ -80,8 +87,10 @@ function recordMetric(poolType, metricName, value = 1) {
     }
     if (metricName === 'receivedThisInterval') {
         intervalMetrics.system.totalReceivedThisInterval += value;
+        lifetimeMetrics.totalReceived += value;
     } else if (metricName === 'droppedByAdmission') {
         intervalMetrics.system.totalDroppedThisInterval += value;
+        lifetimeMetrics.totalDropped += value;
     }
 }
 

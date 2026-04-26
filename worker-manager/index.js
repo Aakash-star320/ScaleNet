@@ -253,7 +253,7 @@ setInterval(async () => {
           console.log(`[Autoscaler] Floor check triggered for ${pool}: ${totalWorkers}/${POOL_LIMITS[pool].min}`);
           await spawnWorker(pool);
           lastActionTime[pool] = Date.now();
-          logDecision(pool, 'scale-up', 'Floor Check: below minimum', totalWorkers, totalWorkers + 1, 'min-floor');
+          logDecision(pool, 'SCALE_UP', 'Floor Check: below minimum', totalWorkers, totalWorkers + 1, 'min-floor');
         } catch (err) {
           console.error(`[Autoscaler] Floor spawn failed for ${pool}:`, err.message);
         }
@@ -261,16 +261,15 @@ setInterval(async () => {
         continue;
       }
 
-      const managedWorkerCount = currentWorkerCounts[pool];
-
       // ─── Emergency Scale Up ───
       // Bypasses cooldown — act immediately when critically overloaded
-      if (utilization > EMERGENCY_UTILIZATION && queueGrowing && totalWorkers < POOL_LIMITS[pool].max) {
+      if ((utilization >= EMERGENCY_UTILIZATION || (status.queueDepth > 15 && queueGrowing)) && totalWorkers < POOL_LIMITS[pool].max) {
         const workersBefore = totalWorkers;
         try {
+          console.log(`[Autoscaler] 🚨 EMERGENCY Scale UP triggered for ${pool} pool! Util: ${(utilization * 100).toFixed(1)}%, Queue: ${status.queueDepth}`);
           await spawnWorker(pool);
           lastActionTime[pool] = Date.now();
-          logDecision(pool, 'scale-up', 'Emergency: utilization critical', workersBefore, workersBefore + 1, 'emergency-utilization');
+          logDecision(pool, 'SCALE_UP_EMERGENCY', 'High util/queue', workersBefore, workersBefore + 1, 'emergency-utilization');
         } catch (err) {
           console.error(`[Autoscaler] Emergency spawn failed for ${pool}:`, err.message);
         }
@@ -286,25 +285,27 @@ setInterval(async () => {
       }
 
       // ─── Normal Scale Up ───
-      if (utilization > NORMAL_UTILIZATION && queueGrowing && totalWorkers < POOL_LIMITS[pool].max) {
+      if ((utilization >= NORMAL_UTILIZATION || (status.queueDepth > 0 && queueGrowing)) && totalWorkers < POOL_LIMITS[pool].max) {
         const workersBefore = totalWorkers;
         try {
+          console.log(`[Autoscaler] 📈 Normal Scale UP triggered for ${pool} pool. Util: ${(utilization * 100).toFixed(1)}%, Queue: ${status.queueDepth}`);
           await spawnWorker(pool);
           lastActionTime[pool] = Date.now();
-          logDecision(pool, 'scale-up', 'Normal: utilization high', workersBefore, workersBefore + 1, 'normal-utilization');
+          logDecision(pool, 'SCALE_UP', 'Util high or queue growing', workersBefore, workersBefore + 1, 'normal-utilization');
         } catch (err) {
           console.error(`[Autoscaler] Normal spawn failed for ${pool}:`, err.message);
         }
       } 
       // ─── Normal Scale Down ───
-      else if (status.queueDepth === 0 && status.idleWorkers > 1 && totalWorkers > POOL_LIMITS[pool].min) {
+      else if (utilization < 0.30 && status.queueDepth === 0 && status.idleWorkers > 0 && totalWorkers > POOL_LIMITS[pool].min) {
         const workersBefore = totalWorkers;
         try {
           const targetId = await getLeastBusyWorker(pool);
           if (targetId) {
+            console.log(`[Autoscaler] 📉 Normal Scale DOWN triggered for ${pool} pool. Util: ${(utilization * 100).toFixed(1)}%`);
             await stopWorker(targetId);
             lastActionTime[pool] = Date.now();
-            logDecision(pool, 'scale-down', 'Normal: excess idle workers', workersBefore, workersBefore - 1, 'idle-excess');
+            logDecision(pool, 'SCALE_DOWN', 'Util < 0.30 & Idle > 0', workersBefore, workersBefore - 1, 'idle-excess');
           }
         } catch (err) {
           console.error(`[Autoscaler] Scale down failed for ${pool}:`, err.message);

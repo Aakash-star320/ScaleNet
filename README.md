@@ -52,7 +52,14 @@ node test-traffic.js 15 150
 
 *Note: Heavy Compute tasks with excessive requests may beautifully and securely timeout out of the queue after 8000ms if concurrency limits are saturated.*
 
+### 5. Launch the 3D Operations Dashboard
+To visualize the real-time cluster state, system pressure, and active queue depths, start the premium Next.js dashboard in another terminal:
+```bash
+cd next-dashboard
+npm run dev
+```
+Navigate to **http://localhost:3002** in your browser to view the interactive 3D WebGL cluster simulation and live telemetry.
+
 ## 🛠 Future Roadmap
 - **Traffic Generator Simulation**: Polishing randomized traffic curves implementing ramps, peaks, and exponential regressions to test scaling elasticity natively.
-- **Graphical Operations Dashboard**: Hooking over the `.jsonl` system artifacts feeding visualization hooks directly natively.
 - **ML Predictive Auto-Scaler**: Expanding the active Rule-Based Auto-Scaler loop by injecting an optional localized Python Reinforcement/Q-Learning AI agent for intelligent container pre-warming natively.

@@ -119,6 +119,13 @@ app.delete('/deregister/:id', (req, res) => {
   res.json({ success: true, message: `${req.params.id} removed` });
 });
 
+// Stop routing new work before the container begins draining.
+app.post('/workers/:id/drain', (req, res) => {
+  const found = scheduler.beginDrain(req.params.id);
+  if (!found) return res.status(404).json({ error: 'Worker not found' });
+  res.json({ success: true, message: `${req.params.id} marked as draining` });
+});
+
 // POST /heartbeat — Workers call this every 2s
 app.post('/heartbeat', (req, res) => {
   if (scheduler.onHeartbeat) {

@@ -8,7 +8,12 @@ const MAX_QUEUE_SIZES = {
   compute: 100,
   batch: 500
 };
-const TASK_TIMEOUT_MS = 8000;
+const QUEUE_TIMEOUT_MS = {
+  interactive: 200,
+  compute: 8000,
+  batch: 8000
+};
+const MAX_DRAIN_REROUTES = 3;
 
 // ─── Metrics State (5-second snapshot) ───────────────────────────────────
 let intervalMetrics = {
@@ -47,6 +52,14 @@ setInterval(() => {
     };
     if (type !== 'batch') {
         snap.avgLatency = internal.completed > 0 ? Math.round(internal.totalLatency / internal.completed) : 0;
+    } else {
+        snap.bufferedRequests = Array.from(pools.batch.workerMap.values())
+          .filter(w => w.healthy)
+          .reduce((sum, w) => sum + (w.bufferSize || 0), 0);
+        snap.processingRequests = Array.from(pools.batch.workerMap.values())
+          .filter(w => w.healthy)
+          .reduce((sum, w) => sum + (w.processingCount || 0), 0);
+        snap.totalOutstandingRequests = snap.queueDepth + snap.bufferedRequests + snap.processingRequests;
     }
     return snap;
   };
@@ -149,11 +162,15 @@ function removeFromEligible(workerId, type) {
 
 // ─── Heartbeat Management ──────────────────────────────────────────
 function onHeartbeat(payload) {
-  const { workerId, poolType, healthy, port } = payload;
+  const { workerId, poolType, managed, healthy, port, bufferSize, processingCount } = payload;
   const pool = pools[poolType];
   if (!pool) return;
 
   let worker = pool.workerMap.get(workerId);
+
+  // Managed containers are explicitly registered by WorkerManager after
+  // Docker reveals their dynamically assigned host port.
+  if (!worker && managed) return;
   
   if (!worker) {
     // Register dynamically if not preset
@@ -163,7 +180,10 @@ function onHeartbeat(payload) {
       capacity: poolType === 'compute' ? 2 : 5,
       activeConnections: 0,
       runningTotalComplexity: 0,
+      bufferSize: poolType === 'batch' ? (bufferSize || 0) : 0,
+      processingCount: poolType === 'batch' ? (processingCount || 0) : 0,
       arrayIndex: -1,
+      draining: false,
       healthy: healthy,
       lastHeartbeat: Date.now(),
       type: poolType,
@@ -173,8 +193,12 @@ function onHeartbeat(payload) {
     console.log(`[Scheduler] Dynamically registered ${workerId} via heartbeat in ${poolType} pool`);
   } else {
     // Update existing (do not overwrite activeConnections / complexity!)
-    worker.healthy = healthy;
+    worker.healthy = worker.draining ? false : healthy;
     worker.lastHeartbeat = Date.now();
+    if (poolType === 'batch') {
+      worker.bufferSize = Number.isFinite(bufferSize) ? bufferSize : (worker.bufferSize || 0);
+      worker.processingCount = Number.isFinite(processingCount) ? processingCount : (worker.processingCount || 0);
+    }
   }
 
   const shouldBeEligible =
@@ -215,10 +239,13 @@ function addWorker(workerData) {
   const worker = {
     id: workerData.id,
     url: workerData.url,
-    capacity: workerData.capacity || 2, // Default, will sync via heartbeat
+    capacity: workerData.capacity || (poolType === 'compute' ? 2 : 5),
     activeConnections: 0,
     runningTotalComplexity: 0,
+    bufferSize: 0,
+    processingCount: 0,
     arrayIndex: -1,
+    draining: false,
     healthy: true,
     lastHeartbeat: Date.now(),
     type: poolType
@@ -236,6 +263,21 @@ function removeWorker(workerId) {
            console.log(`[Scheduler] Manual deregister of ${workerId}`);
        }
    }
+}
+
+function beginDrain(workerId) {
+  for (const [type, pool] of Object.entries(pools)) {
+    const worker = pool.workerMap.get(workerId);
+    if (!worker) continue;
+
+    worker.draining = true;
+    worker.healthy = false;
+    removeFromEligible(workerId, type);
+    console.log(`[Scheduler] Worker ${workerId} marked as draining`);
+    return true;
+  }
+
+  return false;
 }
 
 // ─── Selection Logic (P2C) ──────────────────────────────────────────
@@ -308,6 +350,36 @@ function selectBatchWorker() {
   return pool.workerMap.get(workerId);
 }
 
+function armQueueTimeout(task, timeoutMs) {
+  task.timeoutHandle = setTimeout(() => {
+    const type = task.type;
+    const index = queues[type].indexOf(task);
+    if (index === -1) return;
+
+    queues[type].splice(index, 1);
+    pools[type].queueDepth--;
+    recordMetric(type, 'rejectedByWorkers');
+    task.reject({
+      error: 'Task timed out in queue',
+      taskId: task.id,
+      type,
+      timeoutMs: task.queueTimeoutMs
+    });
+  }, timeoutMs);
+}
+
+function requeueDrainingTask(task) {
+  const remainingMs = task.queueDeadlineAt - Date.now();
+  if (remainingMs <= 0 || task.drainReroutes >= MAX_DRAIN_REROUTES) return false;
+
+  task.drainReroutes++;
+  queues[task.type].unshift(task);
+  pools[task.type].queueDepth++;
+  armQueueTimeout(task, remainingMs);
+  console.log(`[Scheduler] Requeued ${task.id} after draining rejection (attempt ${task.drainReroutes}/${MAX_DRAIN_REROUTES})`);
+  return true;
+}
+
 // ─── Core Dispatch ──────────────────────────────────────────────────
 function dispatch() {
   // Interactive
@@ -368,10 +440,11 @@ async function sendRequest(worker, task) {
   };
 
   try {
-    if (task.type === 'batch') {
+    if (task.type === 'batch' && !task.batchAccepted) {
         // Resolve early for batch queue as per spec (fire & forget)
         task.resolve({ status: 'accepted', message: 'Dispatched to batch worker', handledBy: worker.id });
         recordMetric('batch', 'completed');
+        task.batchAccepted = true;
     }
 
     const axTimeout = task.type === 'compute' ? 60000 : 10000;
@@ -386,6 +459,23 @@ async function sendRequest(worker, task) {
         recordMetric(task.type, 'totalLatency', Date.now() - task.enqueuedAt);
     }
   } catch (err) {
+    const isDrainingRejection = err.response?.status === 503 && err.response?.data?.code === 'WORKER_DRAINING';
+    if (isDrainingRejection) {
+      beginDrain(worker.id);
+      if (requeueDrainingTask(task)) return;
+
+      recordMetric(task.type, 'rejectedByWorkers');
+      if (task.type !== 'batch') {
+        task.reject({
+          error: 'Unable to reroute draining task before its deadline',
+          worker: worker.id,
+          taskId: task.id
+        });
+      }
+      console.error(`[Scheduler] Could not reroute ${task.id} after ${worker.id} began draining`);
+      return;
+    }
+
     const errorMsg = err.response ? `HTTP ${err.response.status}` : (err.code || err.message);
     const serverDetails = err.response && err.response.data && err.response.data.error ? err.response.data.error : '';
     const finalReason = serverDetails ? `${errorMsg} - ${serverDetails}` : errorMsg;
@@ -475,23 +565,22 @@ function enqueue(taskData) {
        taskData.complexity = Math.max(1, Math.min(10, taskData.complexity ?? 1));
     }
 
-    const timeoutHandle = setTimeout(() => {
-      const origSize = queues[type].length;
-      queues[type] = queues[type].filter(t => t.id !== taskId);
-      if (queues[type].length < origSize) {
-        pools[type].queueDepth--;
-      }
-      recordMetric(type, 'rejectedByWorkers');
-      reject({ error: 'Task timed out', taskId, type });
-    }, TASK_TIMEOUT_MS);
-
-    queues[type].push({ 
+    const queueTimeoutMs = QUEUE_TIMEOUT_MS[type];
+    const task = {
       ...taskData, 
       id: taskId, 
+      type,
       resolve, 
       reject, 
-      timeoutHandle 
-    });
+      queueTimeoutMs,
+      queueDeadlineAt: Date.now() + queueTimeoutMs,
+      drainReroutes: 0,
+      batchAccepted: false,
+      timeoutHandle: null
+    };
+
+    armQueueTimeout(task, queueTimeoutMs);
+    queues[type].push(task);
     pools[type].queueDepth++; // Increment when waiting for a worker
     
     dispatch();
@@ -515,8 +604,11 @@ function getStatus() {
       active: w.activeConnections,
       cap: w.capacity,
       healthy: w.healthy,
+      draining: w.draining,
       eligible: pool.eligibleSet.has(w.id),
-      runningTotalComplexity: w.runningTotalComplexity
+      runningTotalComplexity: w.runningTotalComplexity,
+      bufferSize: w.bufferSize || 0,
+      processingCount: w.processingCount || 0
     }));
   }
 
@@ -531,15 +623,34 @@ function getAggregatedStatus() {
       const workers = raw.workerPools[poolType] || [];
       const queueDepth = raw.queues[poolType] || 0;
       
-      const activeWorkers = workers.filter(w => w.active > 0).length;
+      const healthyWorkers = workers.filter(w => w.healthy);
+      const activeWorkers = healthyWorkers.filter(w => w.active > 0).length;
       const idleWorkers = workers.filter(w => w.active === 0 && w.eligible).length;
-      const workerCount = workers.length;
+      const workerCount = healthyWorkers.length;
+      const activeConnections = healthyWorkers.reduce((sum, w) => sum + w.active, 0);
+      const totalCapacity = healthyWorkers.reduce((sum, w) => sum + w.cap, 0);
+      const runningTotalComplexity = healthyWorkers.reduce((sum, w) => sum + w.runningTotalComplexity, 0);
+      const bufferedRequests = poolType === 'batch'
+        ? workers.filter(w => w.healthy).reduce((sum, w) => sum + w.bufferSize, 0)
+        : 0;
+      const processingRequests = poolType === 'batch'
+        ? workers.filter(w => w.healthy).reduce((sum, w) => sum + w.processingCount, 0)
+        : 0;
       
       result[poolType] = {
           queueDepth,
           activeWorkers,
           idleWorkers,
-          workerCount
+          workerCount,
+          activeConnections,
+          totalCapacity,
+          connectionUtilization: totalCapacity === 0 ? 0 : activeConnections / totalCapacity,
+          ...(poolType === 'compute' && { runningTotalComplexity }),
+          ...(poolType === 'batch' && {
+            bufferedRequests,
+            processingRequests,
+            totalOutstandingRequests: queueDepth + bufferedRequests + processingRequests
+          })
       };
   }
   
@@ -553,6 +664,7 @@ module.exports = {
     enqueue, 
     addWorker, 
     removeWorker, 
+    beginDrain,
     getStatus, 
     getAggregatedStatus,
     onHeartbeat,

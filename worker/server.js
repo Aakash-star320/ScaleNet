@@ -9,6 +9,7 @@ const PORT        = process.env.PORT        || 4001;
 const WORKER_ID   = process.env.WORKER_ID   || 'worker-1';
 const WORKER_TYPE = process.env.WORKER_TYPE || 'batch';
 const CAPACITY    = process.env.CAPACITY    || (WORKER_TYPE === 'compute' ? 2 : 5);
+const MANAGED_WORKER = process.env.MANAGED_WORKER === 'true';
 
 // ─── State ─────────────────────────────────────────────────────────────────────
 let activeConnections = 0;
@@ -20,6 +21,7 @@ const latencyHistory  = []; // keeps last 100 latencies
 // Batch specific
 let batchBuffer = [];
 let batchTimer  = null;
+let batchProcessingCount = 0;
 
 function recordLatency(ms) {
   latencyHistory.push(ms);
@@ -52,7 +54,12 @@ app.use(morgan('dev'));
 app.post('/task', async (req, res) => {
   if (isDraining) {
     console.log(`[${WORKER_ID}] Rejected task ${req.body.id} because worker is draining`);
-    return res.status(503).json({ error: 'Worker is draining, not accepting new tasks', workerId: WORKER_ID });
+    return res.status(503).json({
+      error: 'Worker is draining, not accepting new tasks',
+      code: 'WORKER_DRAINING',
+      retryable: true,
+      workerId: WORKER_ID
+    });
   }
 
   const { id, type, enqueuedAt, complexity = 1 } = req.body;
@@ -151,6 +158,7 @@ async function drainBatch() {
     batchTimer = null;
   }
 
+  batchProcessingCount += count;
   activeConnections = 1; // Mark as busy
   
   // Drain sleep scales by bufferSize only inside the worker
@@ -161,7 +169,8 @@ async function drainBatch() {
   await sleep(drainTime);
   
   totalProcessed += count;
-  activeConnections = 0; // Back to idle
+  batchProcessingCount -= count;
+  activeConnections = batchProcessingCount > 0 ? 1 : 0;
   
   console.log(`[${WORKER_ID}] [Batch] Processing complete`);
 }
@@ -176,6 +185,7 @@ app.get('/health', (req, res) => {
     totalProcessed,
     avgLatency:        avgLatency(),
     bufferSize:        WORKER_TYPE === 'batch' ? batchBuffer.length : undefined,
+    processingCount:   WORKER_TYPE === 'batch' ? batchProcessingCount : undefined,
     capacity:          WORKER_TYPE === 'compute' ? CAPACITY : undefined
   });
 });
@@ -183,6 +193,9 @@ app.get('/health', (req, res) => {
 // POST /drain — stop accepting new tasks gracefully
 app.post('/drain', (req, res) => {
   isDraining = true;
+  if (WORKER_TYPE === 'batch' && batchBuffer.length > 0) {
+    drainBatch();
+  }
   console.log(`[${WORKER_ID}] 🛑 DRAIN REQUESTED. Stop accepting tasks. Active connections: ${activeConnections}`);
   res.json({
     success: true,
@@ -209,8 +222,11 @@ setInterval(async () => {
       body: JSON.stringify({
         workerId: WORKER_ID,
         poolType: WORKER_TYPE,
+        managed: MANAGED_WORKER,
         healthy: !isDraining,
-        port: PORT
+        port: PORT,
+        bufferSize: WORKER_TYPE === 'batch' ? batchBuffer.length : undefined,
+        processingCount: WORKER_TYPE === 'batch' ? batchProcessingCount : undefined
       })
     });
   } catch (err) {

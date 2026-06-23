@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ScaleNet Autoscaler</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; background: #07111f; color: #e6edf7; }
+    main { width: min(1180px, calc(100% - 32px)); margin: 32px auto; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+    h1 { margin: 0; font-size: 30px; }
+    h2 { margin: 28px 0 12px; font-size: 18px; }
+    .muted { color: #8ea1b8; }
+    .live { color: #5ee5a1; }
+    .error { color: #ff758c; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+    .card, .panel { background: #0d1b2d; border: 1px solid #20344d; border-radius: 14px; padding: 18px; }
+    .pool-title { display: flex; justify-content: space-between; text-transform: capitalize; font-weight: 700; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .value { display: block; margin-top: 3px; font-size: 22px; font-weight: 700; }
+    .bar { height: 8px; overflow: hidden; background: #152a43; border-radius: 20px; margin-top: 14px; }
+    .bar > div { height: 100%; background: linear-gradient(90deg, #39bdf8, #8b7cff); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid #1c3048; }
+    th { color: #8ea1b8; font-weight: 600; }
+    code { color: #91d7ff; }
+    .empty { padding: 26px 8px; color: #8ea1b8; text-align: center; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } header { align-items: start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>ScaleNet Autoscaler</h1><div class="muted">Live pool pressure, Docker workers, and scaling decisions</div></div>
+    <div id="connection" class="muted">Connecting…</div>
+  </header>
+  <section id="pools" class="grid"></section>
+
+  <h2>Managed Docker workers</h2>
+  <div class="panel"><table><thead><tr><th>Worker</th><th>Pool</th><th>Host port</th><th>Age</th></tr></thead><tbody id="workers"></tbody></table></div>
+
+  <h2>Scaling decisions</h2>
+  <div class="panel"><table><thead><tr><th>Time</th><th>Pool</th><th>Action</th><th>Workers</th><th>Reason</th></tr></thead><tbody id="decisions"></tbody></table></div>
+</main>
+<script>
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const age = ms => `${Math.max(0, Math.floor(ms / 1000))}s`;
+  const pct = value => `${Math.round((value || 0) * 100)}%`;
+
+  async function refresh() {
+    const connection = document.getElementById('connection');
+    try {
+      const response = await fetch('/api/state', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const state = await response.json();
+      connection.className = 'live';
+      connection.textContent = `Live · ${new Date(state.timestamp).toLocaleTimeString()}`;
+
+      document.getElementById('pools').innerHTML = ['interactive', 'compute', 'batch'].map(name => {
+        const pool = state.pools[name] || {};
+        const control = state.autoscaler.pools[name] || {};
+        const utilization = name === 'batch'
+          ? Math.min(1, (pool.totalOutstandingRequests || 0) / Math.max(1, (pool.workerCount || 0) * 50))
+          : pool.connectionUtilization || 0;
+        const work = name === 'batch' ? pool.totalOutstandingRequests || 0 : pool.queueDepth || 0;
+        const mode = control.operationInProgress ? 'Docker operation running' : control.cooldownRemainingMs > 0 ? `Cooldown ${Math.ceil(control.cooldownRemainingMs / 1000)}s` : 'Ready';
+        return `<article class="card"><div class="pool-title"><span>${esc(name)}</span><span class="muted">${esc(mode)}</span></div><div class="stats"><div><span class="muted">Workers</span><span class="value">${pool.workerCount || 0}</span></div><div><span class="muted">Utilization</span><span class="value">${pct(utilization)}</span></div><div><span class="muted">Queued / outstanding</span><span class="value">${work}</span></div><div><span class="muted">Limit</span><span class="value">${control.limits?.min || 0}–${control.limits?.max || 0}</span></div></div><div class="bar"><div style="width:${Math.min(100, utilization * 100)}%"></div></div></article>`;
+      }).join('');
+
+      document.getElementById('workers').innerHTML = state.workers.length ? state.workers.map(worker => `<tr><td><code>${esc(worker.id)}</code></td><td>${esc(worker.poolType)}</td><td>${worker.port}</td><td>${age(Date.now() - worker.spawnedAt)}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">No managed workers</td></tr>';
+      document.getElementById('decisions').innerHTML = state.decisions.length ? state.decisions.map(event => `<tr><td>${new Date(event.timestamp).toLocaleTimeString()}</td><td>${esc(event.pool)}</td><td><code>${esc(event.action)}</code></td><td>${event.workersBefore} → ${event.workersAfter}</td><td>${esc(event.reason)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">Waiting for the first scaling decision…</td></tr>';
+    } catch (err) {
+      connection.className = 'error';
+      connection.textContent = `Disconnected · ${err.message}`;
+    }
+  }
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

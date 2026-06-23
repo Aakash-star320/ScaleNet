@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "demo": "node demo.js",
+    "test:autoscaler:interactive": "node demo.js test-interactive-autoscaler.js",
+    "test:autoscaler:batch": "node demo.js test-batch-autoscaler.js"
+  },
   "dependencies": {
     "axios": "^1.15.0"
   }

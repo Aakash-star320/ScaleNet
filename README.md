@@ -2,6 +2,33 @@
 
 ScaleNet is a high-performance distributed load management and auto-scaling system. Inspired by cloud infrastructure primitives, it simulates how incoming client requests are handled, distributed, and processed across dynamically scaling backend worker node pools.
 
+## One-command autoscaler demo
+
+With Docker Desktop running and root dependencies installed, launch everything with:
+
+```bash
+npm run demo
+```
+
+If Windows PowerShell blocks `npm.ps1`, use the equivalent one-command form:
+
+```powershell
+npm.cmd run demo
+```
+
+This builds the worker image and starts the load balancer, worker manager, autoscaler dashboard, three initial pools, and a continuous compute burst/idle workload. Open `http://localhost:3001` if the dashboard does not open automatically. The workload repeats until `Ctrl+C`; shutdown removes containers labelled as ScaleNet-managed.
+
+The demo uses a 30-second cooldown so scale-up and scale-down can both be observed quickly. The normal default remains 60 seconds.
+
+Run one pool-specific continuous autoscaler test at a time:
+
+```powershell
+npm.cmd run test:autoscaler:interactive
+npm.cmd run test:autoscaler:batch
+```
+
+Each command starts the complete stack and dashboard, runs a 60-second load phase followed by a 120-second idle phase, and repeats until `Ctrl+C`. The load phase should scale that pool up; the idle phase allows buffered or active work to finish before excess containers scale down.
+
 ## 🏗 Architecture (v2 - O(1) Push Model)
 
 Traffic flows through the following highly optimized pipeline:
@@ -17,7 +44,11 @@ Traffic flows through the following highly optimized pipeline:
     2. **Compute Pool**: Heavy-duty SLA. Processes highly variated arbitrary complexity loads. Throttled based on `utilization = running_total_complexity / capacity`. Strict sleep emulation `1000 + (complexity / 10) * 3000ms`.
     3. **Batch Pool**: Deferred execution SLA. Absorbs bursts into an internal worker buffer queue.
 * **Autonomous Rule-Based Autoscaler:** A decoupled worker-manager polls an aggregated-state `GET /status` gateway hook mapping pool utilization bounds every 10 seconds. Dynamically performs asynchronous spawn loops querying nested Container health `GET /health` thresholds inside local bounds, scaling precisely to match real-time system pressure spikes.
-* **Graceful Exit Topology:** A complex asynchronous scaling boundary guaranteeing absolutely zero dropped requests. During container spin down (Drain phase), the Load Balancer instantly severs routing via a `POST /drain` broadcast. The system enforces a strict 60-second blocking health probe natively pinging internal process hooks, observing active task completions before cleanly wrapping the `docker rm -f` spin-off once connections organically drop to 0.
+  * Batch utilization is estimated as `(scheduler queue + worker buffers + processing requests) / (workers × 50)`.
+  * Batch scale-down is considered after one autoscaler check when cooldown has finished, the scheduler queue is empty, outstanding work is not growing, and projected utilization after removing one worker is below 50%.
+  * The least-loaded batch worker is removed from routing, finishes its buffered and processing work, and is then removed. Pool limits remain interactive `1–5`, compute `1–4`, and batch `1–3`.
+* **Graceful Exit Topology:** During container spin down, the scheduler first removes the worker from eligible routing and the worker stops accepting new work. The manager waits up to 60 seconds for active and buffered work to finish before running `docker rm -f`.
+  * If an already-dispatched request reaches a worker after draining begins, the worker returns the machine-readable `WORKER_DRAINING` code. The scheduler marks that worker ineligible and requeues the same request at the front of its pool while preserving its original ID and queue deadline. Draining reroutes are capped at three attempts.
 * **Distributed Admission Control**: An intelligent API-Gateway-level circuit breaker calculating aggregated real-time system pressure (`(3i + 2c + 1b)/6`). Gracefully sheds low-priority tasks with intelligent HTTP `503 Retry-After` headers during peak overload before hitting execution queues.
 * **Granular Telemetry Pipeline**: Asynchronously streams 5-second interval metric snapshots natively to `logs/metrics.jsonl` tracking rolling latencies, worker limits, and gateway drop ratios.
 * **Docker Orchestrator**: Programmatically spins up isolated container topologies locally and binds them back to the host via explicit Docker networking headers (`host.docker.internal`).

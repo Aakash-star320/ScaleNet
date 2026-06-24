@@ -13,18 +13,19 @@ const POOL_LIMITS = {
     batch:       { min: 1, max: 3 }
 };
 
-const COOLDOWN_MS = 60000;
-const AUTOSCALER_INTERVAL = 10000;
+const COOLDOWN_MS = Number(process.env.AUTOSCALER_COOLDOWN_MS) || 60000;
+const AUTOSCALER_INTERVAL = Number(process.env.AUTOSCALER_INTERVAL_MS) || 10000;
 const EMERGENCY_UTILIZATION = 0.90;
 const NORMAL_UTILIZATION = 0.70;
 const SPAWN_TIMEOUT_MS = 30000;
 const DRAIN_TIMEOUT_MS = 60000;
 const HEALTH_POLL_INTERVAL_MS = 500;
+const CONTAINER_PORT = 4001;
 
 const previousSnapshot = {
-    interactive: { queueDepth: 0 },
-    compute:     { queueDepth: 0 },
-    batch:       { queueDepth: 0 }
+    interactive: { workload: 0 },
+    compute:     { workload: 0 },
+    batch:       { workload: 0 }
 };
 
 const lastActionTime = {
@@ -33,63 +34,96 @@ const lastActionTime = {
     batch:       0
 };
 
+const operationInProgress = {
+    interactive: false,
+    compute:     false,
+    batch:       false
+};
+
 // Track the workers we create: workerId -> mapped host port
 const activeWorkers = new Map();
+let workerSequence = 0;
 
-// Since you already have worker-1 (4001) and worker-2 (4002) running manually,
-// we will start generating from worker-3 on port 4003.
-let nextPort = 4001; 
+async function getPublishedPort(workerId) {
+  const { stdout } = await exec(`docker port ${workerId} ${CONTAINER_PORT}/tcp`);
+  const firstMapping = stdout.trim().split(/\r?\n/)[0];
+  const match = firstMapping && firstMapping.match(/:(\d+)$/);
+  if (!match) throw new Error(`Could not determine Docker host port for ${workerId}.`);
+  return Number(match[1]);
+}
 
 /**
  * Spawns a new Docker container, then assumes heartbeat will handle registration
  */
-async function spawnWorker(type = 'batch', workerIdStr = null, forcedPort = null) {
-  const port = forcedPort || nextPort++;
-  const workerId = workerIdStr || `${type}-${port}`;
-  
-  console.log(`[WorkerManager] Spawning ${workerId} on port ${port}...`);
+async function spawnWorker(type = 'batch', workerIdStr = null) {
+  if (operationInProgress[type]) {
+    throw new Error(`A scaling operation is already running for the ${type} pool.`);
+  }
 
-  // We must pass LB_URL=http://host.docker.internal:3000 so the container can heartbeat back to the host!
-  const cmd = `docker run -d --name ${workerId} -p ${port}:${port} -e PORT=${port} -e WORKER_ID=${workerId} -e WORKER_TYPE=${type} -e LB_URL=http://host.docker.internal:3000 scalenet-worker`;
-  
+  operationInProgress[type] = true;
+  let port = null;
+  const workerId = workerIdStr || `${type}-${Date.now()}-${++workerSequence}`;
+  let containerStarted = false;
+
   try {
-    const { stdout, stderr } = await exec(cmd);
+    console.log(`[WorkerManager] Spawning ${workerId} with a Docker-assigned host port...`);
+    const cmd = `docker run -d --name ${workerId} --label scalenet.managed=true -p 127.0.0.1::${CONTAINER_PORT} -e PORT=${CONTAINER_PORT} -e WORKER_ID=${workerId} -e WORKER_TYPE=${type} -e MANAGED_WORKER=true -e LB_URL=http://host.docker.internal:3000 scalenet-worker`;
+    const { stdout } = await exec(cmd);
+    containerStarted = true;
+    port = await getPublishedPort(workerId);
     
     // Save to our local tracker
     activeWorkers.set(workerId, { port, poolType: type, spawnedAt: Date.now() });
     console.log(`[WorkerManager] Container ${workerId} started (ID: ${stdout.trim().substring(0, 12)})`);
 
-    // Poll /health to ensure worker is ready before returning
+    console.log(`[WorkerManager] Docker mapped ${workerId}:${CONTAINER_PORT} to localhost:${port}`);
     console.log(`[WorkerManager] Waiting for ${workerId} to become healthy...`);
     const startTime = Date.now();
     let isHealthy = false;
-    while (Date.now() - startTime < 30000) {
+    while (Date.now() - startTime < SPAWN_TIMEOUT_MS) {
       try {
-        const res = await axios.get(`http://localhost:${port}/health`);
-        if (res.status === 200) {
+        const healthRes = await axios.get(`http://localhost:${port}/health`);
+        if (healthRes.status === 200) {
           isHealthy = true;
           break;
         }
       } catch (err) {
-        // Container still starting up
+        // Container or scheduler registration is still starting up.
       }
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
     }
 
     if (!isHealthy) {
-      console.error(`[WorkerManager] Health check timeout for ${workerId}. Destroying zombie container.`);
-      activeWorkers.delete(workerId);
-      await exec(`docker rm -f ${workerId}`).catch(() => {});
-      throw new Error(`Health check timeout for ${workerId} after 30 seconds.`);
+      throw new Error(`Startup timeout for ${workerId} after ${SPAWN_TIMEOUT_MS}ms.`);
     }
 
-    // No need to manually post to /register anymore! Heartbeat handles it!
-    console.log(`[WorkerManager] ${workerId} is healthy! Relying on Heartbeat to register...`);
+    await axios.post('http://localhost:3000/register', {
+      id: workerId,
+      url: `http://localhost:${port}`,
+      type,
+      capacity: type === 'compute' ? 2 : 5
+    });
+
+    const schedulerRes = await axios.get('http://localhost:3000/queue');
+    const registeredWorker = schedulerRes.data?.workerPools?.[type]
+      ?.find(worker => worker.id === workerId && worker.healthy && !worker.draining);
+    if (!registeredWorker) {
+      throw new Error(`Scheduler registration failed for ${workerId}.`);
+    }
+
+    lastActionTime[type] = Date.now();
+    console.log(`[WorkerManager] ${workerId} is healthy and registered.`);
     
     return { workerId, port, poolType: type, status: 'spawned' };
   } catch (err) {
+    activeWorkers.delete(workerId);
+    if (containerStarted) {
+      await exec(`docker rm -f ${workerId}`).catch(() => {});
+    }
     console.error(`[WorkerManager] Failed to spawn ${workerId}:`, err.message);
     throw err;
+  } finally {
+    operationInProgress[type] = false;
   }
 }
 
@@ -101,12 +135,19 @@ async function stopWorker(workerId) {
     throw new Error(`${workerId} is not tracked by WorkerManager.`);
   }
 
-  const port = activeWorkers.get(workerId).port;
+  const workerData = activeWorkers.get(workerId);
+  const { port, poolType } = workerData;
+  if (operationInProgress[poolType]) {
+    throw new Error(`A scaling operation is already running for the ${poolType} pool.`);
+  }
+
+  operationInProgress[poolType] = true;
   console.log(`[WorkerManager] Draining and stopping ${workerId}...`);
   
   try {
-    // 1. Send drain signal
-    await axios.post(`http://localhost:${port}/drain`).catch(() => {});
+    // 1. Remove from scheduler eligibility before telling the worker to drain.
+    await axios.post(`http://localhost:3000/workers/${workerId}/drain`);
+    await axios.post(`http://localhost:${port}/drain`);
 
     // 2. Poll for 60 seconds waiting for activeConnections to drop to 0
     let drainComplete = false;
@@ -115,7 +156,12 @@ async function stopWorker(workerId) {
     while (Date.now() - startDrain < DRAIN_TIMEOUT_MS) {
       try {
         const healthRes = await axios.get(`http://localhost:${port}/health`);
-        if (healthRes.data && healthRes.data.activeConnections === 0) {
+        const health = healthRes.data;
+        const noActiveRequests = health && health.activeConnections === 0;
+        const noBufferedBatchWork = poolType !== 'batch' || (
+          health.bufferSize === 0 && health.processingCount === 0
+        );
+        if (noActiveRequests && noBufferedBatchWork) {
           drainComplete = true;
           break;
         }
@@ -138,12 +184,15 @@ async function stopWorker(workerId) {
     // 4. Destroy container and clear map
     await exec(`docker rm -f ${workerId}`);
     activeWorkers.delete(workerId);
+    lastActionTime[poolType] = Date.now();
     console.log(`[WorkerManager] Container ${workerId} destroyed.`);
 
     return { workerId, status: 'stopped' };
   } catch (err) {
     console.error(`[WorkerManager] Failed to stop ${workerId}:`, err.message);
     throw err;
+  } finally {
+    operationInProgress[poolType] = false;
   }
 }
 
@@ -164,15 +213,28 @@ function getWorkerCountByPool() {
   return counts;
 }
 
-/**
- * Find the least busy worker in a given pool by querying the LB's live state.
- * Uses GET /queue (which returns getStatus()) for per-worker activeConnections.
- * 
- * @param {string} poolType - 'interactive' | 'compute' | 'batch'
- * @returns {Promise<string|null>} workerId with the fewest active connections, or null
- */
+function getAutoscalerState() {
+  const now = Date.now();
+  const pools = {};
+  for (const pool of ['interactive', 'compute', 'batch']) {
+    pools[pool] = {
+      limits: POOL_LIMITS[pool],
+      operationInProgress: operationInProgress[pool],
+      lastActionTime: lastActionTime[pool],
+      cooldownRemainingMs: Math.max(0, COOLDOWN_MS - (now - lastActionTime[pool]))
+    };
+  }
+
+  return {
+    intervalMs: AUTOSCALER_INTERVAL,
+    cooldownMs: COOLDOWN_MS,
+    normalUtilization: NORMAL_UTILIZATION,
+    emergencyUtilization: EMERGENCY_UTILIZATION,
+    pools
+  };
+}
+
 async function getLeastBusyWorker(poolType) {
-  // Workers this manager is tracking for this pool
   const managedIds = new Set(
     Array.from(activeWorkers.entries())
       .filter(([, data]) => data.poolType === poolType)
@@ -181,37 +243,26 @@ async function getLeastBusyWorker(poolType) {
 
   if (managedIds.size === 0) return null;
 
-  try {
-    const res = await axios.get('http://localhost:3000/queue');
-    const workerList = res.data?.workerPools?.[poolType] || [];
+  const res = await axios.get('http://localhost:3000/queue');
+  const workers = res.data?.workerPools?.[poolType] || [];
+  let selected = null;
+  let lowestLoad = Infinity;
 
-    let leastBusyId = null;
-    let lowestActive = Infinity;
+  for (const worker of workers) {
+    if (!managedIds.has(worker.id) || !worker.healthy || worker.draining) continue;
 
-    for (const w of workerList) {
-      // Only consider workers this manager spawned
-      if (!managedIds.has(w.id)) continue;
-
-      // Compute pool: weight by runningTotalComplexity (a worker with 1 task at
-      // complexity 9 is busier than one with 2 tasks at complexity 1 each).
-      // Interactive/Batch: raw activeConnections is sufficient — requests are uniform.
-      const load = poolType === 'compute'
-        ? (w.runningTotalComplexity ?? w.active)
-        : w.active;
-
-      if (load < lowestActive) {
-        lowestActive = load;
-        leastBusyId = w.id;
-      }
+    const load = poolType === 'compute'
+      ? worker.runningTotalComplexity
+      : poolType === 'batch'
+        ? worker.bufferSize + worker.processingCount
+        : worker.active;
+    if (load < lowestLoad) {
+      lowestLoad = load;
+      selected = worker.id;
     }
-
-    // Fallback: if LB doesn't know about our workers yet, return first tracked one
-    return leastBusyId || [...managedIds][0];
-  } catch (err) {
-    console.error(`[WorkerManager] getLeastBusyWorker failed to reach LB: ${err.message}`);
-    // Safe fallback — just return first worker in the pool
-    return [...managedIds][0] || null;
   }
+
+  return selected;
 }
 
 function logDecision(pool, action, reason, workersBefore, workersAfter, trigger) {
@@ -234,94 +285,102 @@ setInterval(async () => {
   try {
     const statusRes = await axios.get('http://localhost:3000/status');
     const aggregatedStatus = statusRes.data;
-    const currentWorkerCounts = getWorkerCountByPool();
 
     for (const pool of ['interactive', 'compute', 'batch']) {
       const status = aggregatedStatus[pool];
       if (!status) continue;
 
-      // Use the LB's total worker count for utilization calculation so we 
-      // account for any static/pre-existing workers.
-      const totalWorkers = status.workerCount;
-      const utilization = totalWorkers === 0 ? 0 : status.activeWorkers / totalWorkers;
-      const queueGrowing = status.queueDepth > previousSnapshot[pool].queueDepth;
+      const workerCount = status.workerCount;
+      const workload = pool === 'batch'
+        ? status.totalOutstandingRequests
+        : status.queueDepth;
+      const utilization = pool === 'batch'
+        ? (workerCount === 0 ? 0 : Math.min(1, workload / (workerCount * 50)))
+        : status.connectionUtilization;
+      const workloadGrowing = workload > previousSnapshot[pool].workload;
       
-      // ─── Floor Check ───
-      // If we are below the minimum required workers, spawn one immediately.
-      if (totalWorkers < POOL_LIMITS[pool].min) {
+      // ─── Emergency Check ───
+
+      // ─── Normal Scale Up/Down ───
+      
+      if (operationInProgress[pool]) {
+        previousSnapshot[pool].workload = workload;
+        continue;
+      }
+
+      if (workerCount < POOL_LIMITS[pool].min) {
         try {
-          console.log(`[Autoscaler] Floor check triggered for ${pool}: ${totalWorkers}/${POOL_LIMITS[pool].min}`);
           await spawnWorker(pool);
-          lastActionTime[pool] = Date.now();
-          logDecision(pool, 'SCALE_UP', 'Floor Check: below minimum', totalWorkers, totalWorkers + 1, 'min-floor');
+          logDecision(pool, 'SCALE_UP', 'Below minimum worker count', workerCount, workerCount + 1, 'min-floor');
         } catch (err) {
           console.error(`[Autoscaler] Floor spawn failed for ${pool}:`, err.message);
         }
-        previousSnapshot[pool].queueDepth = status.queueDepth;
+        previousSnapshot[pool].workload = workload;
         continue;
       }
 
-      // ─── Emergency Scale Up ───
-      // Bypasses cooldown — act immediately when critically overloaded
-      if ((utilization >= EMERGENCY_UTILIZATION || (status.queueDepth > 15 && queueGrowing)) && totalWorkers < POOL_LIMITS[pool].max) {
-        const workersBefore = totalWorkers;
+      const emergency = utilization >= EMERGENCY_UTILIZATION || (workload > 15 && workloadGrowing);
+      if (emergency && workerCount < POOL_LIMITS[pool].max) {
         try {
-          console.log(`[Autoscaler] 🚨 EMERGENCY Scale UP triggered for ${pool} pool! Util: ${(utilization * 100).toFixed(1)}%, Queue: ${status.queueDepth}`);
           await spawnWorker(pool);
-          lastActionTime[pool] = Date.now();
-          logDecision(pool, 'SCALE_UP_EMERGENCY', 'High util/queue', workersBefore, workersBefore + 1, 'emergency-utilization');
+          logDecision(pool, 'SCALE_UP_EMERGENCY', 'Critical utilization or growing workload', workerCount, workerCount + 1, 'emergency');
         } catch (err) {
           console.error(`[Autoscaler] Emergency spawn failed for ${pool}:`, err.message);
         }
-        previousSnapshot[pool].queueDepth = status.queueDepth;
+        previousSnapshot[pool].workload = workload;
         continue;
       }
 
-      // ─── Cooldown Gate ───
-      // If we acted on this pool recently, skip — the spawn hasn't had time to affect utilization yet
       if (Date.now() - lastActionTime[pool] < COOLDOWN_MS) {
-        previousSnapshot[pool].queueDepth = status.queueDepth;
+        previousSnapshot[pool].workload = workload;
         continue;
       }
 
-      // ─── Normal Scale Up ───
-      if ((utilization >= NORMAL_UTILIZATION || (status.queueDepth > 0 && queueGrowing)) && totalWorkers < POOL_LIMITS[pool].max) {
-        const workersBefore = totalWorkers;
+      const normalScaleUp = pool === 'compute'
+        ? utilization >= NORMAL_UTILIZATION && workload > 0 && workload >= previousSnapshot[pool].workload
+        : utilization >= NORMAL_UTILIZATION || (workload > 0 && workloadGrowing);
+      const projectedBatchUtilization = pool === 'batch' && workerCount > 1
+        ? Math.min(1, workload / ((workerCount - 1) * 50))
+        : 1;
+      const normalScaleDown = pool === 'batch'
+        ? status.queueDepth === 0 && !workloadGrowing && projectedBatchUtilization < 0.50 && workerCount > POOL_LIMITS[pool].min
+        : utilization < 0.30 && workload === 0 && workerCount > POOL_LIMITS[pool].min;
+
+      if (normalScaleUp && workerCount < POOL_LIMITS[pool].max) {
         try {
-          console.log(`[Autoscaler] 📈 Normal Scale UP triggered for ${pool} pool. Util: ${(utilization * 100).toFixed(1)}%, Queue: ${status.queueDepth}`);
           await spawnWorker(pool);
-          lastActionTime[pool] = Date.now();
-          logDecision(pool, 'SCALE_UP', 'Util high or queue growing', workersBefore, workersBefore + 1, 'normal-utilization');
+          logDecision(pool, 'SCALE_UP', 'High utilization or growing workload', workerCount, workerCount + 1, 'normal');
         } catch (err) {
           console.error(`[Autoscaler] Normal spawn failed for ${pool}:`, err.message);
         }
-      } 
-      // ─── Normal Scale Down ───
-      else if (utilization < 0.30 && status.queueDepth === 0 && status.idleWorkers > 0 && totalWorkers > POOL_LIMITS[pool].min) {
-        const workersBefore = totalWorkers;
+      } else if (normalScaleDown) {
         try {
           const targetId = await getLeastBusyWorker(pool);
           if (targetId) {
-            console.log(`[Autoscaler] 📉 Normal Scale DOWN triggered for ${pool} pool. Util: ${(utilization * 100).toFixed(1)}%`);
             await stopWorker(targetId);
-            lastActionTime[pool] = Date.now();
-            logDecision(pool, 'SCALE_DOWN', 'Util < 0.30 & Idle > 0', workersBefore, workersBefore - 1, 'idle-excess');
+            const reason = pool === 'batch'
+              ? `Projected utilization ${(projectedBatchUtilization * 100).toFixed(1)}% after removal`
+              : 'Low utilization with no outstanding work';
+            logDecision(pool, 'SCALE_DOWN', reason, workerCount, workerCount - 1, 'idle-excess');
           }
         } catch (err) {
           console.error(`[Autoscaler] Scale down failed for ${pool}:`, err.message);
         }
       }
-      
-      previousSnapshot[pool].queueDepth = status.queueDepth;
+
+      previousSnapshot[pool].workload = workload;
     }
   } catch (err) {
     console.error('[Autoscaler] Loop error:', err.message);
   }
 }, AUTOSCALER_INTERVAL);
 
-// ─── Startup ──────────────────────────────────────────────────────────────────
-console.log('🚀 ScaleNet Worker Manager & Autoscaler started.');
-console.log(`[Config] Interval: ${AUTOSCALER_INTERVAL}ms, Cooldown: ${COOLDOWN_MS}ms`);
-console.log('[Status] Monitoring interactive, compute, and batch pools...');
-
-module.exports = { spawnWorker, stopWorker, getActiveWorkers, getWorkerCountByPool, getLeastBusyWorker, logDecision };
+module.exports = {
+  spawnWorker,
+  stopWorker,
+  getActiveWorkers,
+  getWorkerCountByPool,
+  getAutoscalerState,
+  getLeastBusyWorker,
+  logDecision
+};
